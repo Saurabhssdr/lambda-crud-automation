@@ -76,7 +76,7 @@ pipeline {
  
                         // Read it from the file
 
-                        def functionName = readFile('terraform/lambda_name.txt').trim()
+                        def functionName = readFile('lambda_name.txt').trim()
 
                         echo "Running Lambda Function: ${functionName}"
  
