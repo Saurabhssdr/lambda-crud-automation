@@ -62,37 +62,45 @@ pipeline {
 
         }
  
-        stage('Invoke Lambda (Optional Test Run)') {
+        stage('Invoke Lambda (Test Run)') {
 
             steps {
 
-                script {
+                dir('terraform') {
 
-                    def functionName = bat(
+                    script {
 
-                        script: 'terraform -chdir=terraform output -raw lambda_function_name',
+                        // Save lambda function name to a file
 
-                        returnStdout: true
-
-                    ).trim()
+                        bat 'terraform output -raw lambda_function_name > lambda_name.txt'
  
-                    echo "Running Lambda function: ${functionName}"
+                        // Read it from the file
+
+                        def functionName = readFile('terraform/lambda_name.txt').trim()
+
+                        echo "Running Lambda Function: ${functionName}"
  
-                    bat """
+                        // Invoke Lambda function
+
+                        bat """
 
                         aws lambda invoke ^
 
                           --function-name ${functionName} ^
 
-                          --region ${env.AWS_REGION} ^
+                          --region %AWS_REGION% ^
 
                           --payload "{}" ^
 
                           lambda_output.json
 
-                    """
+                        """
+ 
+                        // Print the Lambda response
 
-                    bat 'type lambda_output.json'
+                        bat 'type lambda_output.json'
+
+                    }
 
                 }
 
@@ -106,13 +114,13 @@ pipeline {
 
         success {
 
-            echo '✅ Deployment successful!'
+            echo '✅ Deployment and Lambda test successful!'
 
         }
 
         failure {
 
-            echo '❌ Deployment failed.'
+            echo '❌ Deployment or test failed. Check the logs.'
 
         }
 
