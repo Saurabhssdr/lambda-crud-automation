@@ -6,6 +6,10 @@ pipeline {
 
         AWS_REGION = 'us-east-1'
 
+        AWS_ACCESS_KEY_ID = credentials('aws-access-key')   // Use Jenkins credentials
+
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
+
     }
  
     stages {
@@ -85,21 +89,21 @@ pipeline {
                     def functionName = readFile('terraform/lambda_name.txt').trim()
 
                     echo "Invoking Lambda: ${functionName}"
- 
+
                     bat """
 
-                    aws lambda invoke ^
+                        aws lambda invoke ^
 
-                      --function-name ${functionName} ^
+                          --function-name ${functionName} ^
 
-                      --region %AWS_REGION% ^
+                          --region %AWS_REGION% ^
 
-                      --payload "{}" ^
+                          --payload "{}" ^
 
-                      lambda_output.json
+                          lambda_output.json
 
                     """
- 
+
                     bat 'type lambda_output.json'
 
                 }
@@ -114,13 +118,13 @@ pipeline {
 
         success {
 
-            echo ' Deployment and test successful!'
+            echo '✅ Deployment and test successful!'
 
         }
 
         failure {
 
-            echo ' Deployment or test failed.'
+            echo '❌ Deployment or test failed.'
 
         }
 
