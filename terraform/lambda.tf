@@ -11,6 +11,8 @@ resource "aws_lambda_function" "test_crud_lambda" {
   filename         = "../lambda/lambda_function.zip"
 
   source_code_hash = filebase64sha256("../lambda/lambda_function.zip")
+
+  timeout = 120
  
   environment {
 
