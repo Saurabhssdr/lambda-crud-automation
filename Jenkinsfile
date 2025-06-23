@@ -6,7 +6,7 @@ pipeline {
 
         AWS_REGION = 'us-east-1'
 
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key')   // Use Jenkins credentials
+        AWS_ACCESS_KEY_ID = credentials('aws-access-key')
 
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
 
@@ -90,21 +90,11 @@ pipeline {
 
                     echo "Invoking Lambda: ${functionName}"
 
-                    bat """
+                    // Fixed line here
 
-                        aws lambda invoke ^
+                    bat "aws lambda invoke --function-name ${functionName} --region %AWS_REGION% --payload \"{}\" lambda_output.json"
 
-                          --function-name ${functionName} ^
-
-                          --region %AWS_REGION% ^
-
-                          --payload "{}" ^
-
-                          lambda_output.json
-
-                    """
-
-                    bat 'type lambda_output.json'
+                    bat "type lambda_output.json"
 
                 }
 
