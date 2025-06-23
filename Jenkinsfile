@@ -20,7 +20,7 @@ pipeline {
 
         }
  
-        stage('Set Up Terraform') {
+        stage('Terraform Init') {
 
             steps {
 
@@ -48,7 +48,7 @@ pipeline {
 
         }
  
-        stage('Deploy Lambda (Terraform Apply)') {
+        stage('Terraform Apply') {
 
             steps {
 
@@ -62,45 +62,45 @@ pipeline {
 
         }
  
-        stage('Invoke Lambda (Test Run)') {
+        stage('Read Lambda Name from Output') {
 
             steps {
 
                 dir('terraform') {
 
-                    script {
+                    bat 'terraform output -raw lambda_function_name > lambda_name.txt'
 
-                        // Save lambda function name to a file
+                }
 
-                        bat 'terraform output -raw lambda_function_name > lambda_name.txt'
+            }
+
+        }
  
-                        // Read it from the file
+        stage('Invoke Lambda Function') {
 
-                        def functionName = readFile('lambda_name.txt').trim()
+            steps {
 
-                        echo "Running Lambda Function: ${functionName}"
+                script {
+
+                    def functionName = readFile('terraform/lambda_name.txt').trim()
+
+                    echo "Invoking Lambda: ${functionName}"
  
-                        // Invoke Lambda function
+                    bat """
 
-                        bat """
+                    aws lambda invoke ^
 
-                        aws lambda invoke ^
+                      --function-name ${functionName} ^
 
-                          --function-name ${functionName} ^
+                      --region %AWS_REGION% ^
 
-                          --region %AWS_REGION% ^
+                      --payload "{}" ^
 
-                          --payload "{}" ^
+                      lambda_output.json
 
-                          lambda_output.json
-
-                        """
+                    """
  
-                        // Print the Lambda response
-
-                        bat 'type lambda_output.json'
-
-                    }
+                    bat 'type lambda_output.json'
 
                 }
 
@@ -114,13 +114,13 @@ pipeline {
 
         success {
 
-            echo '✅ Deployment and Lambda test successful!'
+            echo ' Deployment and test successful!'
 
         }
 
         failure {
 
-            echo '❌ Deployment or test failed. Check the logs.'
+            echo ' Deployment or test failed.'
 
         }
 
