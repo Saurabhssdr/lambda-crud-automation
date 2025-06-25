@@ -72,7 +72,7 @@ pipeline {
 
         echo "⏳ Waiting 3 minutes for EC2 and FastAPI setup to complete..."
 
-        bat 'sleep 180'
+        bat 'timeout /t 180 /nobreak'
 
       }
 
