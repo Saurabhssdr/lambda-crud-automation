@@ -70,7 +70,7 @@ pipeline {
 
       steps {
 
-        echo " Waiting 1 minutes for EC2 and FastAPI setup to complete..."
+        echo " Waiting minutes for EC2 and FastAPI setup to complete..."
 
         bat 'ping -n 181 127.0.0.1 > nul' // 3-minute wait for EC2 init
 
