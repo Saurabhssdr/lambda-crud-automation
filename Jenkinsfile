@@ -30,7 +30,7 @@ pipeline {
 
         dir('terraform') {
 
-          sh 'terraform init'
+          bat 'terraform init'
 
         }
 
@@ -44,7 +44,7 @@ pipeline {
 
         dir('terraform') {
 
-          sh 'terraform plan'
+          bat 'terraform plan'
 
         }
 
@@ -58,7 +58,7 @@ pipeline {
 
         dir('terraform') {
 
-          sh 'terraform apply -auto-approve'
+          bat 'terraform apply -auto-approve'
 
         }
 
@@ -72,7 +72,7 @@ pipeline {
 
         echo "⏳ Waiting 3 minutes for EC2 and FastAPI setup to complete..."
 
-        sh 'sleep 180'
+        bat 'sleep 180'
 
       }
 
@@ -84,7 +84,7 @@ pipeline {
 
         dir('terraform') {
 
-          sh 'terraform output fastapi_public_ip'
+          bat 'terraform output fastapi_public_ip'
 
         }
 
