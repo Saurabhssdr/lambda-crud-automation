@@ -66,17 +66,12 @@ pipeline {
 
     }
  
-    stage('Wait for EC2 Setup') {
-
-      steps {
-
-        echo "⏳ Waiting 3 minutes for EC2 and FastAPI setup to complete..."
-
-        bat 'timeout /t 180 /nobreak'
-
-      }
-
-    }
+   stage('Wait for EC2 Setup') {
+  steps {
+    echo "⏳ Waiting 3 minutes for EC2 and FastAPI setup to complete..."
+    bat 'ping -n 181 127.0.0.1 > nul'
+  }
+}
  
     stage('Show EC2 Public IP') {
 
