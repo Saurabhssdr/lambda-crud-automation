@@ -1,15 +1,10 @@
-provider "aws" {
-  region = "us-east-1"
-}
 resource "aws_instance" "fastapi_ec2" {
-  ami           = "ami-0c02fb55956c7d316"
+  ami           = "ami-051f8a213df8bc089"  # Amazon Linux 2023 AMI
   instance_type = "t2.micro"
-  user_data     = file("${path.module}/setup.sh")  # Correct relative path
+  key_name      = "my-key-pem"          # Optional: Add if you want SSH access
+  user_data     = file("${path.module}/setup.sh")
+ 
   tags = {
-    Name = "FastAPI-EC2"
+    Name = "fastapi-instance"
   }
- 
-  vpc_security_group_ids = [aws_security_group.allow_http.id]
 }
-
- 
