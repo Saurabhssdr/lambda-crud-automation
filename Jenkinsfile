@@ -13,7 +13,7 @@ pipeline {
   }
  
   stages {
-
+ 
     stage('Checkout Code') {
 
       steps {
@@ -66,27 +66,18 @@ pipeline {
 
     }
  
-   stage('Wait for EC2 Setup') {
-  steps {
-    echo "⏳ Waiting 3 minutes for EC2 and FastAPI setup to complete..."
-    bat 'ping -n 181 127.0.0.1 > nul'
-  }
-}
- 
-    stage('Show EC2 Public IP') {
+    stage('Wait for EC2 Setup') {
 
       steps {
 
-        dir('terraform') {
+        echo " Waiting 1 minutes for EC2 and FastAPI setup to complete..."
 
-          bat 'terraform output fastapi_public_ip'
-
-        }
+        bat 'ping -n 181 127.0.0.1 > nul' // 3-minute wait for EC2 init
 
       }
 
     }
-
+ 
   }
  
   post {
