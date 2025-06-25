@@ -13,7 +13,7 @@ pipeline {
     }
  
     stages {
-
+ 
         stage('Checkout Code') {
 
             steps {
@@ -90,11 +90,33 @@ pipeline {
 
                     echo "Invoking Lambda: ${functionName}"
 
-                    // Fixed line here
-
                     bat "aws lambda invoke --function-name ${functionName} --region %AWS_REGION% --payload \"{}\" lambda_output.json"
 
                     bat "type lambda_output.json"
+
+                }
+
+            }
+
+        }
+ 
+        stage('Print EC2 Public IP') {
+
+            steps {
+
+                dir('terraform') {
+
+                    echo "Fetching EC2 Public IP..."
+
+                    bat 'terraform output -raw ec2_public_ip > ec2_ip.txt'
+
+                    script {
+
+                        def ec2Ip = readFile('terraform/ec2_ip.txt').trim()
+
+                        echo "🌐 FastAPI App running at: http://${ec2Ip}"
+
+                    }
 
                 }
 
@@ -108,13 +130,13 @@ pipeline {
 
         success {
 
-            echo '✅ Deployment and test successful!'
+            echo '✅ All resources deployed and Lambda tested successfully!'
 
         }
 
         failure {
 
-            echo '❌ Deployment or test failed.'
+            echo '❌ Deployment or testing failed.'
 
         }
 
@@ -122,4 +144,5 @@ pipeline {
 
 }
 
+ 
  
