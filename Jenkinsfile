@@ -70,7 +70,7 @@ pipeline {
 
       steps {
 
-        echo " Waiting minutes for EC2 and FastAPI setup to complete..."
+        echo " Waiting 3 minutes for EC2 and FastAPI setup to complete..."
 
         bat 'ping -n 181 127.0.0.1 > nul' // 3-minute wait for EC2 init
 
@@ -84,13 +84,13 @@ pipeline {
 
     success {
 
-      echo '✅ EC2 instance created successfully. You can now use the public IP in the browser for CRUD.'
+      echo ' EC2 instance created successfully. You can now use the public IP in the browser for CRUD.'
 
     }
 
     failure {
 
-      echo '❌ EC2 instance creation failed.'
+      echo ' EC2 instance creation failed.'
 
     }
 

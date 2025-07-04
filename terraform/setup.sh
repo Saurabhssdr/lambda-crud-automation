@@ -7,4 +7,4 @@ cd fast-api
 git checkout main
 pip3 install --upgrade pip
 pip3 install httpx fastapi uvicorn
-nohup uvicorn main:app --host 0.0.0.0 --port 80 > fastapi.log 2>&1 &
+nohup uvicorn main:app --host 0.0.0.0 --port 8000 > fastapi.log 2>&1 &

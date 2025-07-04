@@ -1,39 +1,39 @@
-resource "aws_iam_role" "lambda_exec" {
+# resource "aws_iam_role" "lambda_exec" {
 
-  name = "lambda_exec_role"
+#   name = "lambda_exec_role"
  
-  assume_role_policy = jsonencode({
+#   assume_role_policy = jsonencode({
 
-    Version = "2012-10-17",
+#     Version = "2012-10-17",
 
-    Statement = [
+#     Statement = [
 
-      {
+#       {
 
-        Action = "sts:AssumeRole",
+#         Action = "sts:AssumeRole",
 
-        Effect = "Allow",
+#         Effect = "Allow",
 
-        Principal = {
+#         Principal = {
 
-          Service = "lambda.amazonaws.com"
+#           Service = "lambda.amazonaws.com"
 
-        }
+#         }
 
-      }
+#       }
 
-    ]
+#     ]
 
-  })
+#   })
 
-}
+# }
  
-resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
+# resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 
-  role       = aws_iam_role.lambda_exec.name
+#   role       = aws_iam_role.lambda_exec.name
 
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+#   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 
-}
+# }
 
  
