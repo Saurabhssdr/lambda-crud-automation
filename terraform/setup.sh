@@ -24,8 +24,8 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-sed -i 's/#AWS_ACCESS_KEY_ID#/AKIA2L32X3A2J362ZXSB/g' /home/ec2-user/fast-api/.env
-sed -i 's/#AWS_SECRET_ACCESS_KEY#/SID6XPTVWGmWbwUMzZXZGamZ8Dro4kY1+194fAN/g' /home/ec2-user/fast-api/.env
+sed -i 's/#AWS_ACCESS_KEY_ID#/AKIA2132X3A2J362ZXSB/g' /home/ec2-user/fast-api/.env
+sed -i 's/#AWS_SECRET_ACCESS_KEY#/ZSID6XPTVWGmWbwUMzZXZGamz8Dro4KY1+194fAN/g' /home/ec2-user/fast-api/.env
 sed -i 's/#AWS_DEFAULT_REGION#/us-east-1/g' /home/ec2-user/fast-api/.env
 
  
