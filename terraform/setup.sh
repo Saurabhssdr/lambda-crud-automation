@@ -1,3 +1,5 @@
+setup.sh file 
+ 
 #!/bin/bash
  
 # Update system & install essentials
@@ -10,28 +12,15 @@ cd /home/ec2-user
 # Clone repo
 git clone https://github.com/Saurabhssdr/fast-api.git
 cd fast-api
-
-# Create .env file with placeholders
-cat << 'EOF' > /home/ec2-user/fast-api/.env
-AWS_ACCESS_KEY_ID=#AWS_ACCESS_KEY_ID#
-AWS_SECRET_ACCESS_KEY=#AWS_SECRET_ACCESS_KEY#
-AWS_DEFAULT_REGION=#AWS_DEFAULT_REGION#
-EOF
-
-# Ensure .env is created
-if [ ! -f ".env" ]; then
-    echo "❌ .env file creation failed. Exiting."
-    exit 1
-fi
-
-sed -i 's/#AWS_ACCESS_KEY_ID#/AKIA2132X3A2J362ZXSB/g' /home/ec2-user/fast-api/.env
-sed -i 's/#AWS_SECRET_ACCESS_KEY#/ZSID6XPTVWGmWbwUMzZXZGamz8Dro4KY1+194fAN/g' /home/ec2-user/fast-api/.env
-sed -i 's/#AWS_DEFAULT_REGION#/us-east-1/g' /home/ec2-user/fast-api/.env
-
+sudo chown ec2-user:ec2-user /home/ec2-user/fast-api
+sudo chmod 755 /home/ec2-user/fast-api
  
-# Install Python dependencies
+# No .env creation needed now
+# No sed replacement
+ 
+# Install dependencies
 pip3 install --upgrade pip
 pip3 install -r requirements.txt || pip3 install fastapi uvicorn boto3 python-dotenv httpx
  
-# Run app in background & write logs
+# Start FastAPI app
 nohup uvicorn main:app --host 0.0.0.0 --port 8000 > fastapi.log 2>&1 &
