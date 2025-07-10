@@ -3,8 +3,8 @@ provider "aws" {
 }
  
 # 1. IAM Role for EC2 to access DynamoDB
-resource "aws_iam_role" "ec2_dynamodb_role" {
-  name = "ec2-dynamodb-role"
+resource "aws_iam_role" "ec2_dynamo_role" {
+  name = "ec2-dynamo-role"
  
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -20,14 +20,14 @@ resource "aws_iam_role" "ec2_dynamodb_role" {
  
 # 2. Attach AmazonDynamoDBFullAccess policy to that role
 resource "aws_iam_role_policy_attachment" "dynamodb_access" {
-  role       = aws_iam_role.ec2_dynamodb_role.name
+  role       = aws_iam_role.ec2_dynamo_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
 }
  
 # 3. Create an instance profile from that role
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "ec2-instance-profile"
-  role = aws_iam_role.ec2_dynamodb_role.name
+  role = aws_iam_role.ec2_dynamo_role.name
 }
  
 # 4. Create EC2 instance and attach role
