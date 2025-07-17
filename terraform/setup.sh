@@ -3,23 +3,24 @@
 # Update and install dependencies
 yum update -y
 yum install -y git docker
-
-# Start and enable Docker service
 systemctl start docker
 systemctl enable docker
 
-# Add ec2-user to docker group and reboot to apply (handled by cloud-init)
+# Add ec2-user to docker group (no reboot needed if service is running)
 usermod -aG docker ec2-user
-reboot
+newgrp docker  # Apply group change immediately
 
-# Clone repo (will run after reboot via user_data)
+# Clone repo
 cd /home/ec2-user
-git clone https://github.com/Saurabhssdr/fast-api.git
+git clone https://github.com/Saurabhssdr/fast-api.git || (cd fast-api && git pull)
 cd fast-api
 
 # Set permissions
-chown ec2-user:ec2-user /home/ec2-user/fast-api
-chmod 755 /home/ec2-user/fast-api
+chown -R ec2-user:ec2-user /home/ec2-user/fast-api
+chmod -R 755 /home/ec2-user/fast-api
+
+# Rename dockerfile if needed
+[ -f dockerfile ] && mv dockerfile Dockerfile
 
 # Build and run Docker container
 docker build -t fastapi-crud .
