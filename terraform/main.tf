@@ -25,7 +25,7 @@ resource "aws_iam_role_policy_attachment" "dynamodb_access" {
 }
  
 # 3. Create an instance profile from that role
-resource "aws_iam_instance_profile" "ec2_profile-v10" {
+resource "aws_iam_instance_profile" "ec2_profile-v11" {
   name = "ec2-instance-profile-v11"
   role = aws_iam_role.ec2_dynamo_role-v11.name
 }
