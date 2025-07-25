@@ -82,14 +82,18 @@ Jenkins (CI/CD)
 
 Clone the Repo
 
-git clone https://github.com/Saurabhssdr/lambda-crud-automation.git
-cd lambda-crud-automation
+git clone https://github.com/Saurabhssdr/AWS_DEVOPS_FINAL.git
+cd AWS_DEVOPS_FINAL
 
 
 
 Configure AWS CLI
 
 aws configure
+
+
+
+
 
 Ensure IAM user has EC2, DynamoDB, and Jenkins permissions.
 
@@ -153,7 +157,7 @@ Use the interface to create, read, update, and delete DynamoDB records.
 
 
 
-📊 Logs available via EC2 instance (docker logs <container-id>).
+📊 Logs available via EC2 instance: docker logs <container-id>.
 
 🔧 Additional Notes
 
@@ -165,4 +169,4 @@ Ensure port 8000 is open in the EC2 security group.
 
 
 
-Documentation: [Final DevOps+FS.pptx](Final DevOps+FS.pptx) in the repo.
+Documentation: Final DevOps+FS.pptx in the repo.
