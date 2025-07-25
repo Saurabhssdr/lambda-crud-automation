@@ -82,8 +82,8 @@ Jenkins (CI/CD)
 
 Clone the Repo
 
-git clone https://github.com/Saurabhssdr/AWS_DEVOPS_FINAL.git
-cd AWS_DEVOPS_FINAL
+git clone https://github.com/Saurabhssdr/lambda-crud-automation.git
+cd lambda-crud-automation
 
 
 
