@@ -106,6 +106,12 @@ pipeline {
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
     }
     stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Saurabhssdr/lambda-crud-automation.git'
+                echo 'Code checked out successfully'
+            }
+        }
         stage('Verify Tools') {
             steps {
                 bat 'terraform -v || exit /b 1'
@@ -116,17 +122,32 @@ pipeline {
         }
         stage('Initialize Terraform') {
             steps {
-                bat 'terraform init || exit /b 1'
-                echo 'Terraform initialized'
+                dir('terraform') {
+                    bat 'terraform init || exit /b 1'
+                    echo 'Terraform initialized'
+                }
             }
         }
-        stage('Create EC2 and EKS Cluster') {
+        stage('Terraform Apply (Create EC2)') {
             steps {
-                bat 'terraform apply -auto-approve || exit /b 1'
-                bat 'for /f "tokens=*" %%i in (\'terraform output -json ^| jq -r ".ec2_public_ip.value"\') do set EC2_IP=%%i && echo EC2_IP=%%i > env.properties || exit /b 1'
+                dir('terraform') {
+                    bat 'terraform apply -auto-approve || exit /b 1'
+                    bat 'for /f "tokens=*" %%i in (\'terraform output -json ^| jq -r ".ec2_public_ip.value"\') do set EC2_IP=%%i && echo EC2_IP=%%i > ../env.properties || exit /b 1'
+                    echo 'EC2 instance created'
+                }
+            }
+        }
+        stage('Wait for EC2 Setup') {
+            steps {
+                echo "Waiting 3 minutes for EC2 and FastAPI setup to complete..."
+                bat 'ping -n 181 127.0.0.1 > nul' // 3-minute wait
+            }
+        }
+        stage('Create EKS Cluster') {
+            steps {
                 bat 'eksctl create cluster --name fastapi-eks --region %AWS_REGION% --nodegroup-name standard-workers --node-type t2.micro --nodes 1 --managed=false || true'
                 bat 'aws eks --region %AWS_REGION% update-kubeconfig --name fastapi-eks || exit /b 1'
-                echo 'EC2 and EKS cluster created'
+                echo 'EKS cluster created'
             }
         }
         stage('Configure EC2 and Join EKS') {
@@ -173,7 +194,7 @@ pipeline {
                     for /f "tokens=*" %%i in (\'kubectl get svc fastapi-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"\') do set EXTERNAL_IP=%%i
                     if not defined EXTERNAL_IP (
                         echo Waiting for LoadBalancer IP...
-                        timeout /t 10
+                        timeout /t 30
                         goto loop
                     )
                     echo FastAPI accessible at http://%EXTERNAL_IP%
@@ -188,4 +209,3 @@ pipeline {
         }
     }
 }
- 
