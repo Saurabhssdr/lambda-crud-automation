@@ -3,8 +3,8 @@ provider "aws" {
 }
 
 # 1. IAM Role for EC2 to access DynamoDB
-resource "aws_iam_role" "ec2_dynamodb_role17" {
-  name = "ec2-dynamodb-role17"
+resource "aws_iam_role" "ec2_dynamodb_role18" {
+  name = "ec2-dynamodb-role18"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -20,14 +20,14 @@ resource "aws_iam_role" "ec2_dynamodb_role17" {
 
 # 2. Attach AmazonDynamoDBFullAccess policy to that role
 resource "aws_iam_role_policy_attachment" "dynamodb_access" {
-  role       = aws_iam_role.ec2_dynamodb_role17.name
+  role       = aws_iam_role.ec2_dynamodb_role18.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
 }
 
 # 3. Create an instance profile from that role
-resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "ec2-instance-profile"
-  role = aws_iam_role.ec2_dynamodb_role17.name
+resource "aws_iam_instance_profile" "ec2_profile1" {
+  name = "ec2-instance-profile1"
+  role = aws_iam_role.ec2_dynamodb_role18.name
 }
 
 # 4. Create DynamoDB Table with new name
@@ -57,7 +57,7 @@ resource "aws_instance" "fastapi_ec2" {
   ami                    = "ami-051f8a213df8bc089"  # Amazon Linux 2 (check latest for your region)
   instance_type          = "t2.micro"
   key_name               = "my-key-pem"             # Replace with your key
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile1.name
   user_data              = file("${path.module}/setup.sh")
 
   tags = {
