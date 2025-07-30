@@ -1,11 +1,11 @@
 provider "aws" {
   region = "us-east-1"
 }
- 
+
 # 1. IAM Role for EC2 to access DynamoDB
-resource "aws_iam_role" "ec2_dynamo_role-v15" {
-  name = "ec2-dynamo-role-v15"
- 
+resource "aws_iam_role" "ec2_dynamodb_role" {
+  name = "ec2-dynamodb-role"
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -17,27 +17,49 @@ resource "aws_iam_role" "ec2_dynamo_role-v15" {
     }]
   })
 }
- 
+
 # 2. Attach AmazonDynamoDBFullAccess policy to that role
 resource "aws_iam_role_policy_attachment" "dynamodb_access" {
-  role       = aws_iam_role.ec2_dynamo_role-v15.name
+  role       = aws_iam_role.ec2_dynamodb_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
 }
- 
+
 # 3. Create an instance profile from that role
-resource "aws_iam_instance_profile" "ec2_profile-v15" {
-  name = "ec2-instance-profile-v15"
-  role = aws_iam_role.ec2_dynamo_role-v15.name
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "ec2-instance-profile"
+  role = aws_iam_role.ec2_dynamodb_role.name
 }
- 
-# 4. Create EC2 instance and attach role
+
+# 4. Create DynamoDB Table with new name
+resource "aws_dynamodb_table" "locations_table" {
+  name           = "LocationsTerraform" # Changed to avoid duplicate
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "country"
+  range_key      = "city_id"
+
+  attribute {
+    name = "country"
+    type = "S" # String
+  }
+
+  attribute {
+    name = "city_id"
+    type = "S" # String
+  }
+
+  tags = {
+    Environment = "dev"
+  }
+}
+
+# 5. Create EC2 instance and attach role
 resource "aws_instance" "fastapi_ec2" {
   ami                    = "ami-051f8a213df8bc089"  # Amazon Linux 2 (check latest for your region)
   instance_type          = "t2.micro"
   key_name               = "my-key-pem"             # Replace with your key
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile-v15.name
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
   user_data              = file("${path.module}/setup.sh")
- 
+
   tags = {
     Name = "fastapi-instance"
   }
