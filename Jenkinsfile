@@ -150,7 +150,6 @@ pipeline {
           timeout(time: 3, unit: 'MINUTES') {
             retry(6) {
               bat """
-                icacls "${KEY_PATH}" /inheritance:r /grant "NT AUTHORITY\\SYSTEM:R"
                 ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "echo SSH OK"
               """
               sleep(time: 30, unit: 'SECONDS')
@@ -176,14 +175,12 @@ pipeline {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
           bat """
-            icacls "${KEY_PATH}" /inheritance:r /grant "NT AUTHORITY\\SYSTEM:R"
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl enable docker && sudo systemctl start docker && sudo usermod -aG docker ec2-user"
 
             for /f "tokens=*" %%i in ('aws eks create-token --cluster-name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "status.token" --output text') do set JOIN_CMD=%%i
             for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.endpoint" --output text') do set ENDPOINT=%%i
             for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.certificateAuthority.data" --output text ^| base64 -d ^| sha256sum') do set HASH=%%~i
 
-            icacls "${KEY_PATH}" /inheritance:r /grant "NT AUTHORITY\\SYSTEM:R"
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "sudo kubeadm join --token %JOIN_CMD% %ENDPOINT% --discovery-token-ca-cert-hash sha256:%HASH%"
           """
         }
@@ -196,10 +193,7 @@ pipeline {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
           bat """
-            icacls "${KEY_PATH}" /inheritance:r /grant "NT AUTHORITY\\SYSTEM:R"
             scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" -r ./* ec2-user@${ec2Ip}:/home/ec2-user/lambda-crud-automation
-
-            icacls "${KEY_PATH}" /inheritance:r /grant "NT AUTHORITY\\SYSTEM:R"
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "cd /home/ec2-user/lambda-crud-automation && mv dockerfile Dockerfile && docker build -t fastapi-crud . && docker stop fastapi-crud || true && docker rm fastapi-crud || true && docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud"
           """
         }
@@ -249,4 +243,5 @@ pipeline {
     }
   }
 }
+
 
