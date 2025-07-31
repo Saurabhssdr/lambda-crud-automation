@@ -10,13 +10,16 @@ variable "table_name" {
 variable "sg_name" {
   default = "allow_http"
 }
+variable "timestamp" {
+  default = "" // Will be overridden by pipeline
+}
 
 provider "aws" {
   region = "us-east-1"
 }
 
 resource "aws_iam_role" "ec2_dynamodb_role" {
-  name = var.role_name
+  name = "${var.role_name}-${var.timestamp}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -33,12 +36,12 @@ resource "aws_iam_role_policy_attachment" "dynamodb_access" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = var.profile_name
+  name = "${var.profile_name}-${var.timestamp}"
   role = aws_iam_role.ec2_dynamodb_role.name
 }
 
 resource "aws_dynamodb_table" "locations_table" {
-  name           = var.table_name
+  name           = "${var.table_name}-${var.timestamp}"
   billing_mode   = "PAY_PER_REQUEST"
   hash_key       = "country"
   range_key      = "city_id"
@@ -56,7 +59,7 @@ resource "aws_dynamodb_table" "locations_table" {
 }
 
 resource "aws_security_group" "allow_http" {
-  name        = "${var.sg_name}-${var.timestamp}" // Dynamic name with timestamp
+  name        = "${var.sg_name}-${var.timestamp}"
   description = "Allow HTTP inbound traffic"
   vpc_id      = data.aws_vpc.default.id
   ingress {
@@ -85,7 +88,7 @@ resource "aws_instance" "fastapi_ec2" {
   user_data              = file("${path.module}/setup.sh")
   vpc_security_group_ids = [aws_security_group.allow_http.id]
   tags = {
-    Name = "fastapi-instance"
+    Name = "fastapi-instance-${var.timestamp}"
   }
 }
 
