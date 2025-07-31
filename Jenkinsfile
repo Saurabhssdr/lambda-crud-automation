@@ -104,8 +104,8 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731114023
-        KEY_PATH = 'C:/Users/SaurabhDaundkar/my-key-pem.pem' // Define key path as env var
+        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731115023
+        KEY_PATH = 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\my-key-pem.pem' // Updated to workspace
         EC2_IP_FILE = 'env.properties'
     }
     stages {
@@ -148,7 +148,11 @@ pipeline {
                 bat 'ping -n 181 127.0.0.1 > nul'
                 script {
                     def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
-                    bat "ssh -i %KEY_PATH% ec2-user@${ec2Ip} exit || exit /b 1" // Test SSH connectivity
+                    bat """
+                        if not exist %KEY_PATH% exit /b 1
+                        :retry
+                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} exit || if errorlevel 1 (timeout /t 30 && goto :retry) else exit /b 0
+                    """ // Retry SSH up to 3 minutes
                 }
                 echo 'EC2 ready for EKS join'
             }
