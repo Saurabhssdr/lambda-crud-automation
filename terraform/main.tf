@@ -18,6 +18,10 @@ provider "aws" {
   region = "us-east-1"
 }
 
+data "aws_vpc" "default" {
+  default = true
+}
+
 resource "aws_iam_role" "ec2_dynamodb_role" {
   name = "${var.role_name}-${var.timestamp}"
   assume_role_policy = jsonencode({
@@ -41,18 +45,21 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 }
 
 resource "aws_dynamodb_table" "locations_table" {
-  name           = "${var.table_name}-${var.timestamp}"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "country"
-  range_key      = "city_id"
+  name         = "${var.table_name}-${var.timestamp}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "country"
+  range_key    = "city_id"
+
   attribute {
     name = "country"
     type = "S"
   }
+
   attribute {
     name = "city_id"
     type = "S"
   }
+
   tags = {
     Environment = "dev"
   }
@@ -60,24 +67,32 @@ resource "aws_dynamodb_table" "locations_table" {
 
 resource "aws_security_group" "allow_http" {
   name        = "${var.sg_name}-${var.timestamp}"
-  description = "Allow HTTP inbound traffic"
+  description = "Allow HTTP and SSH inbound traffic"
   vpc_id      = data.aws_vpc.default.id
+
+  # Allow HTTP (port 80)
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  # ✅ Allow SSH (port 22) so Jenkins can connect
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow all egress
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-}
-
-data "aws_vpc" "default" {
-  default = true
 }
 
 resource "aws_instance" "fastapi_ec2" {
@@ -87,6 +102,7 @@ resource "aws_instance" "fastapi_ec2" {
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
   user_data              = file("${path.module}/setup.sh")
   vpc_security_group_ids = [aws_security_group.allow_http.id]
+
   tags = {
     Name = "fastapi-instance-${var.timestamp}"
   }
