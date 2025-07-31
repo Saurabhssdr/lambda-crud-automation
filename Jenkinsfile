@@ -7,7 +7,6 @@ pipeline {
     TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}"
     KEY_PATH = 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\my-key-pem.pem'
     EC2_IP_FILE = 'env.properties'
-    CLUSTER_NAME = "fastapi-eks-v${new Date().format('yyyyMMddHHmmss')}"
   }
 
   stages {
@@ -21,14 +20,20 @@ pipeline {
     stage('Terraform Apply (Create EC2)') {
       steps {
         dir('terraform') {
+          bat 'terraform init'
           bat """
-            terraform init
             terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
           """
           script {
+            // Clean any old env file
+            if (fileExists(EC2_IP_FILE)) {
+              echo "🧹 Deleting old IP file"
+              bat "del ${EC2_IP_FILE}"
+            }
+
             def ip = bat(returnStdout: true, script: 'terraform output -raw ec2_public_ip').trim()
             writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
-            echo "🟢 EC2 Public IP: ${ip}"
+            echo "✅ EC2 Public IP: ${ip}"
           }
         }
       }
@@ -36,15 +41,20 @@ pipeline {
 
     stage('Wait for SSH Ready') {
       steps {
+        echo "⏳ Waiting for EC2 SSH to be ready..."
         script {
-          def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
-          echo "⏳ Waiting for EC2 at ${ec2Ip} to allow SSH..."
-          sleep(time: 90, unit: 'SECONDS')
-          retry(5) {
-            sleep(time: 15, unit: 'SECONDS')
-            bat """
-              ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "echo SSH OK"
-            """
+          def ec2FileRaw = readFile(EC2_IP_FILE)
+          echo "📄 env.properties content: ${ec2FileRaw}"
+          def ec2Ip = ec2FileRaw.trim().split('=')[1]
+          echo "🔎 Trying SSH to EC2 IP: ${ec2Ip}"
+
+          timeout(time: 5, unit: 'MINUTES') {
+            retry(10) {
+              sleep(time: 30, unit: 'SECONDS')
+              bat """
+                ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "echo SSH OK"
+              """
+            }
           }
         }
       }
@@ -53,71 +63,44 @@ pipeline {
     stage('Create EKS Cluster') {
       steps {
         bat """
-          eksctl create cluster --name ${CLUSTER_NAME} --region ${AWS_REGION} --nodegroup-name workers-${TIMESTAMP} --node-type t2.micro --nodes 1 --managed=false
-          aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
+          eksctl create cluster --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION} --nodes 2 --managed --node-type t2.micro --with-oidc --ssh-access --ssh-public-key my-key-pem
         """
-        echo "✅ EKS cluster created: ${CLUSTER_NAME}"
+        echo '✅ EKS cluster created'
       }
     }
 
-    stage('Configure EC2 and Join EKS') {
+    stage('Configure EC2 to Use EKS') {
       steps {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
           bat """
-            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "
-              sudo yum update -y &&
-              sudo yum install -y docker git kubelet kubeadm kubectl &&
-              sudo systemctl enable docker &&
-              sudo systemctl start docker &&
-              sudo usermod -aG docker ec2-user
-            "
+            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\kube-deploy.yaml ec2-user@${ec2Ip}:/home/ec2-user/
+            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "aws eks update-kubeconfig --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION}"
           """
-          echo "🔧 EC2 configured with Docker and Kubernetes tools"
         }
+        echo '✅ EC2 configured with kubeconfig'
       }
     }
 
-    stage('Deploy FastAPI to EC2') {
+    stage('Deploy FastAPI to EKS') {
       steps {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
           bat """
-            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" -r ./* ec2-user@${ec2Ip}:/home/ec2-user/lambda-crud-automation
-            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "
-              cd /home/ec2-user/lambda-crud-automation &&
-              mv dockerfile Dockerfile &&
-              docker build -t fastapi-crud . &&
-              docker stop fastapi-crud || true &&
-              docker rm fastapi-crud || true &&
-              docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud
-            "
+            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl apply -f kube-deploy.yaml"
           """
-          echo "🚀 FastAPI running in Docker on EC2"
         }
+        echo '✅ FastAPI app deployed to EKS'
       }
     }
 
-    stage('Deploy to Kubernetes') {
-      steps {
-        bat """
-          aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
-          kubectl apply -f deployment.yaml
-          kubectl apply -f service.yaml
-        """
-        echo "📦 FastAPI deployed to EKS"
-      }
-    }
-
-    stage('Get LoadBalancer URL') {
+    stage('Get Load Balancer URL') {
       steps {
         script {
-          retry(5) {
-            bat """
-              kubectl get svc fastapi-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
-            """
-            sleep(time: 30, unit: 'SECONDS')
-          }
+          def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
+          bat """
+            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl get svc fastapi-service --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
+          """
         }
       }
     }
@@ -125,23 +108,19 @@ pipeline {
 
   post {
     success {
-      echo '✅ Pipeline complete'
-
-      // Keep cleanup disabled for now to debug easily
-      // Uncomment later to auto-clean
-      // dir('terraform') {
-      //   bat """
-      //     terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
-      //   """
-      // }
-      // bat """
-      //   kubectl delete pod --all -n default --force --grace-period=0
-      //   eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION} --wait
-      // """
+      echo '✅ Cleaning up all resources...'
+      dir('terraform') {
+        bat """
+          terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
+        """
+      }
+      bat """
+        kubectl delete pod --all -n default --force --grace-period=0
+        eksctl delete cluster --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION} --wait
+      """
     }
-
     failure {
-      echo '❌ Pipeline failed — keeping resources for debugging.'
+      echo '❌ Pipeline failed. Keeping resources for manual debugging.'
     }
   }
 }
