@@ -29,16 +29,16 @@ pipeline {
             def rawOutput = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
             echo "🔍 Terraform raw output:\n${rawOutput}"
 
-            // Take the LAST line (IP) safely
+            // Only extract actual IPs using regex, skip all batch garbage
             def lines = rawOutput.readLines()
-            def lastLine = lines[-1].trim()
+            def ipLine = lines.find { it ==~ /^\\d+\\.\\d+\\.\\d+\\.\\d+$/ }
 
-            if (!lastLine.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
-              error "❌ Last line is not a valid IP address: ${lastLine}"
+            if (!ipLine) {
+              error "❌ No valid IP found in terraform output. Got:\n${rawOutput}"
             }
 
-            writeFile file: EC2_IP_FILE, text: "EC2_IP=${lastLine}"
-            echo "✅ EC2 Public IP saved to env.properties: ${lastLine}"
+            writeFile file: EC2_IP_FILE, text: "EC2_IP=${ipLine}"
+            echo "✅ EC2 Public IP saved to env.properties: ${ipLine}"
           }
         }
       }
