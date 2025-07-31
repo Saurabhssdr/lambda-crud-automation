@@ -26,12 +26,8 @@ pipeline {
             terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
           """
           script {
-            def output = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
-            def lines = output.readLines()
-            def ip = lines[-1].trim()
-            if (!ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
-              error "❌ Failed to extract a valid IP address. Got: ${ip}"
-            }
+            def rawOutput = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
+            def ip = rawOutput.readLines().findAll { it ==~ /\d+\\.\\d+\\.\\d+\\.\\d+/ }[-1]
             writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
             echo "✅ EC2 Public IP saved to env.properties: ${ip}"
           }
