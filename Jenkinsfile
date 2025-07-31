@@ -11,6 +11,7 @@ pipeline {
   }
 
   stages {
+
     stage('Checkout Code') {
       steps {
         git branch: 'main', url: 'https://github.com/Saurabhssdr/lambda-crud-automation.git'
@@ -26,13 +27,12 @@ pipeline {
             terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
           """
           script {
-            def ip = bat(returnStdout: true, script: '@echo off & terraform output -raw ec2_public_ip').trim()
-            echo "🌐 Terraform EC2 Public IP: '${ip}'"
-            if (!ip || ip == '' || ip == 'null') {
-              error "❌ Terraform output for EC2 public IP is empty or invalid."
+            def ip = bat(returnStdout: true, script: 'terraform output -raw ec2_public_ip').trim()
+            if (!ip) {
+              error "❌ Terraform output for EC2 public IP is empty!"
             }
             writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
-            echo "✅ Saved EC2 IP to ${EC2_IP_FILE}"
+            echo "✅ EC2 IP saved: ${ip}"
           }
         }
       }
@@ -42,28 +42,35 @@ pipeline {
       steps {
         script {
           if (!fileExists(EC2_IP_FILE)) {
-            error "❌ env.properties file not found!"
+            error "❌ env.properties not found!"
           }
           def content = readFile(EC2_IP_FILE).trim()
-          if (!content || !content.contains('=')) {
-            error "❌ env.properties file is empty or malformed! Content: ${content}"
+          if (!content.contains("=")) {
+            error "❌ env.properties malformed: ${content}"
           }
-          echo "✅ env.properties validated: ${content}"
+          def ip = content.split("=")[1].trim()
+          if (!ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
+            error "❌ Invalid IP in env.properties: ${ip}"
+          }
+          echo "✅ env.properties validated: ${ip}"
         }
       }
     }
 
-    stage('Wait for SSH Ready') {
+    stage('Wait for SSH (Auto)') {
       steps {
-        echo "⏳ Waiting 3 minutes for EC2 SSH to be ready... (Manual verification required)"
-        bat 'ping -n 181 127.0.0.1 > nul'
         script {
-          def ec2IpLine = readFile(EC2_IP_FILE).trim()
-          def ec2Ip = ec2IpLine.split('=')[1].trim()
-          echo "🔍 Please manually verify SSH to ${ec2Ip} with: ssh -i ${KEY_PATH} ec2-user@${ec2Ip}"
+          def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1].trim()
+          echo "⏳ Waiting 90 seconds for EC2 to be ready at ${ec2Ip}..."
+          sleep(time: 90, unit: 'SECONDS')
+
+          echo "🔍 Checking SSH connection..."
+          def result = bat(script: "ssh -o StrictHostKeyChecking=no -i \"${KEY_PATH}\" ec2-user@${ec2Ip} \"echo SSH_OK\"", returnStatus: true)
+          if (result != 0) {
+            error "❌ SSH to EC2 (${ec2Ip}) failed! Make sure the key and security group are correct."
+          }
+          echo "✅ SSH to EC2 is working!"
         }
-        input 'Confirm SSH to EC2 is working and ready to proceed?'
-        echo '✅ EC2 verified and ready for EKS join'
       }
     }
 
@@ -72,7 +79,7 @@ pipeline {
         bat """
           eksctl create cluster --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION} --nodes 2 --managed --node-type t2.micro --with-oidc --ssh-access --ssh-public-key my-key-pem
         """
-        echo "✅ EKS cluster created: fastapi-eks-v${TIMESTAMP}"
+        echo "✅ EKS cluster created"
       }
     }
 
@@ -81,11 +88,11 @@ pipeline {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1].trim()
           bat """
-            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\deployment.yaml ec2-user@${ec2Ip}:/home/ec2-user/
-            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\service.yaml ec2-user@${ec2Ip}:/home/ec2-user/
+            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" deployment.yaml ec2-user@${ec2Ip}:/home/ec2-user/
+            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" service.yaml ec2-user@${ec2Ip}:/home/ec2-user/
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "aws eks update-kubeconfig --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION}"
           """
-          echo "✅ EC2 configured with EKS kubeconfig"
+          echo "✅ EC2 configured to access EKS"
         }
       }
     }
@@ -98,7 +105,7 @@ pipeline {
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl apply -f deployment.yaml"
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl apply -f service.yaml"
           """
-          echo "✅ FastAPI deployed to EKS cluster"
+          echo "✅ FastAPI deployed"
         }
       }
     }
@@ -118,20 +125,10 @@ pipeline {
 
   post {
     success {
-      echo '✅ Cleaning up resources...'
-      dir('terraform') {
-        bat """
-          terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
-        """
-      }
-      bat """
-        kubectl delete pod --all -n default --force --grace-period=0
-        eksctl delete cluster --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION} --wait
-      """
-      echo "✅ Cleanup completed"
+      echo '✅ Pipeline success'
     }
     failure {
-      echo '❌ Pipeline failed. Please check logs and do manual cleanup if necessary.'
+      echo '❌ Pipeline failed. Manual cleanup may be required.'
     }
   }
 }
