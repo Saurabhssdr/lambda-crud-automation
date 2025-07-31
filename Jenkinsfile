@@ -104,7 +104,9 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731110823
+        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731114023
+        KEY_PATH = 'C:/Users/SaurabhDaundkar/my-key-pem.pem' // Define key path as env var
+        EC2_IP_FILE = 'env.properties'
     }
     stages {
         stage('Checkout Code') {
@@ -134,16 +136,21 @@ pipeline {
                 dir('terraform') {
                     bat """
                         terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve || exit /b 1
-                        for /f "tokens=*" %%i in ('terraform output -raw ec2_public_ip') do set EC2_IP=%%i && echo EC2_IP=%%i > ../env.properties || exit /b 1
+                        for /f "tokens=*" %%i in ('terraform output -raw ec2_public_ip') do set EC2_IP=%%i && echo EC2_IP=%%i > ../${EC2_IP_FILE} || exit /b 1
                     """
                     echo 'EC2 instance created'
                 }
             }
         }
-        stage('Wait for EC2 Setup') {
+        stage('Wait and Verify EC2') {
             steps {
                 echo "Waiting 3 minutes for EC2 and FastAPI setup..."
                 bat 'ping -n 181 127.0.0.1 > nul'
+                script {
+                    def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
+                    bat "ssh -i %KEY_PATH% ec2-user@${ec2Ip} exit || exit /b 1" // Test SSH connectivity
+                }
+                echo 'EC2 ready for EKS join'
             }
         }
         stage('Create EKS Cluster') {
@@ -158,13 +165,14 @@ pipeline {
         stage('Configure EC2 and Join EKS') {
             steps {
                 script {
-                    def ec2Ip = readFile('env.properties').trim().split('=')[1]
+                    def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
                     bat """
-                        ssh -i C:/Users/SaurabhDaundkar/my-key-pem.pem ec2-user@${ec2Ip} "sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl start docker && sudo systemctl enable docker && sudo usermod -aG docker ec2-user && newgrp docker" || exit /b 1
+                        if not exist %KEY_PATH% exit /b 1
+                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} "sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl start docker && sudo systemctl enable docker && sudo usermod -aG docker ec2-user && newgrp docker" || exit /b 1
                         for /f "tokens=*" %%i in ('aws eks create-token --cluster-name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "status.token" --output text') do set JOIN_CMD=%%i
                         for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.endpoint" --output text') do set ENDPOINT=%%i
                         for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.certificateAuthority.data" --output text ^| base64 -d ^| sha256sum ^| awk "{print \$1}"') do set HASH=%%i
-                        ssh -i C:/Users/SaurabhDaundkar/my-key-pem.pem ec2-user@${ec2Ip} "sudo kubeadm join --token %JOIN_CMD% %ENDPOINT% --discovery-token-ca-cert-hash sha256:%HASH%" || exit /b 1
+                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} "sudo kubeadm join --token %JOIN_CMD% %ENDPOINT% --discovery-token-ca-cert-hash sha256:%HASH%" || exit /b 1
                     """
                     echo 'EC2 joined to EKS'
                 }
@@ -173,10 +181,10 @@ pipeline {
         stage('Copy Code and Build Image') {
             steps {
                 script {
-                    def ec2Ip = readFile('env.properties').trim().split('=')[1]
+                    def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
                     bat """
-                        scp -i C:/Users/SaurabhDaundkar/my-key-pem.pem -r ./* ec2-user@${ec2Ip}:/home/ec2-user/lambda-crud-automation || exit /b 1
-                        ssh -i C:/Users/SaurabhDaundkar/my-key-pem.pem ec2-user@${ec2Ip} "cd /home/ec2-user/lambda-crud-automation && [ -f dockerfile ] && mv dockerfile Dockerfile && docker build -t fastapi-crud . && docker stop fastapi-crud || true && docker rm fastapi-crud || true && docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud" || exit /b 1
+                        scp -i %KEY_PATH% -r ./* ec2-user@${ec2Ip}:/home/ec2-user/lambda-crud-automation || exit /b 1
+                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} "cd /home/ec2-user/lambda-crud-automation && [ -f dockerfile ] && mv dockerfile Dockerfile && docker build -t fastapi-crud . && docker stop fastapi-crud || true && docker rm fastapi-crud || true && docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud" || exit /b 1
                     """
                     echo 'Image built and running on EC2'
                 }
@@ -212,7 +220,10 @@ pipeline {
             dir('terraform') {
                 bat 'terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve || exit /b 0'
             }
-            bat 'eksctl delete cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --wait || exit /b 0'
+            bat """
+                kubectl delete pod --all -n default --force --grace-period=0 || exit /b 0
+                eksctl delete cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --wait || exit /b 0
+            """
             echo 'Cleanup completed'
         }
     }
