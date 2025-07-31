@@ -11,7 +11,6 @@ pipeline {
   }
 
   stages {
-
     stage('Checkout Code') {
       steps {
         git branch: 'main', url: 'https://github.com/Saurabhssdr/lambda-crud-automation.git'
@@ -27,12 +26,12 @@ pipeline {
             terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
           """
           script {
-            def ip = bat(returnStdout: true, script: 'terraform output -raw ec2_public_ip').trim()
-            if (!ip) {
-              error "❌ Terraform output for EC2 public IP is empty!"
+            def ipOutput = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
+            if (!ipOutput || !ipOutput.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
+              error "❌ Failed to extract a valid IP address. Got: ${ipOutput}"
             }
-            writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
-            echo "✅ EC2 IP saved: ${ip}"
+            writeFile file: EC2_IP_FILE, text: "EC2_IP=${ipOutput}"
+            echo "✅ EC2 Public IP saved: ${ipOutput}"
           }
         }
       }
@@ -45,14 +44,14 @@ pipeline {
             error "❌ env.properties not found!"
           }
           def content = readFile(EC2_IP_FILE).trim()
-          if (!content.contains("=")) {
-            error "❌ env.properties malformed: ${content}"
+          if (!content.contains('=')) {
+            error "❌ env.properties malformed!"
           }
           def ip = content.split("=")[1].trim()
           if (!ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
             error "❌ Invalid IP in env.properties: ${ip}"
           }
-          echo "✅ env.properties validated: ${ip}"
+          echo "✅ Valid EC2 IP: ${ip}"
         }
       }
     }
@@ -61,15 +60,14 @@ pipeline {
       steps {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1].trim()
-          echo "⏳ Waiting 90 seconds for EC2 to be ready at ${ec2Ip}..."
+          echo "⏳ Waiting 90 seconds for EC2 to boot..."
           sleep(time: 90, unit: 'SECONDS')
-
-          echo "🔍 Checking SSH connection..."
-          def result = bat(script: "ssh -o StrictHostKeyChecking=no -i \"${KEY_PATH}\" ec2-user@${ec2Ip} \"echo SSH_OK\"", returnStatus: true)
+          echo "🔍 Checking SSH to ${ec2Ip}..."
+          def result = bat(returnStatus: true, script: "ssh -o StrictHostKeyChecking=no -i \"${KEY_PATH}\" ec2-user@${ec2Ip} \"echo SSH_OK\"")
           if (result != 0) {
-            error "❌ SSH to EC2 (${ec2Ip}) failed! Make sure the key and security group are correct."
+            error "❌ SSH failed. Make sure the EC2 is up and accessible."
           }
-          echo "✅ SSH to EC2 is working!"
+          echo "✅ SSH successful!"
         }
       }
     }
@@ -92,7 +90,7 @@ pipeline {
             scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" service.yaml ec2-user@${ec2Ip}:/home/ec2-user/
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "aws eks update-kubeconfig --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION}"
           """
-          echo "✅ EC2 configured to access EKS"
+          echo "✅ EC2 now has access to EKS"
         }
       }
     }
@@ -125,10 +123,10 @@ pipeline {
 
   post {
     success {
-      echo '✅ Pipeline success'
+      echo '✅ Deployment Successful'
     }
     failure {
-      echo '❌ Pipeline failed. Manual cleanup may be required.'
+      echo '❌ Pipeline failed. Check above logs.'
     }
   }
 }
