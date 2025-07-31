@@ -11,7 +11,7 @@ variable "sg_name" {
   default = "allow_http"
 }
 variable "timestamp" {
-  default = "" // Will be overridden by pipeline
+  default = ""
 }
 
 provider "aws" {
@@ -70,7 +70,6 @@ resource "aws_security_group" "allow_http" {
   description = "Allow HTTP and SSH inbound traffic"
   vpc_id      = data.aws_vpc.default.id
 
-  # Allow HTTP (port 80)
   ingress {
     from_port   = 80
     to_port     = 80
@@ -78,7 +77,6 @@ resource "aws_security_group" "allow_http" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # ✅ Allow SSH (port 22) so Jenkins can connect
   ingress {
     from_port   = 22
     to_port     = 22
@@ -86,7 +84,6 @@ resource "aws_security_group" "allow_http" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Allow all egress
   egress {
     from_port   = 0
     to_port     = 0
