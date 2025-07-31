@@ -131,7 +131,7 @@ pipeline {
         dir('terraform') {
           bat """
             terraform init
-            terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
+            terraform apply -var \"role_name=ec2-dynamodb-role\" -var \"profile_name=ec2-instance-profile\" -var \"table_name=LocationsTerraform\" -var \"sg_name=allow_http\" -var \"timestamp=${TIMESTAMP}\" -auto-approve
           """
           script {
             def ip = bat(returnStdout: true, script: 'terraform output -raw ec2_public_ip').trim()
@@ -147,10 +147,11 @@ pipeline {
         echo "Waiting up to 3 minutes for SSH to become available..."
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
+          sleep(time: 60, unit: 'SECONDS')
           timeout(time: 3, unit: 'MINUTES') {
             retry(6) {
               bat """
-                ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "echo SSH OK"
+                ssh -o StrictHostKeyChecking=no -i \"${KEY_PATH}\" ec2-user@${ec2Ip} \"echo SSH OK\"
               """
               sleep(time: 30, unit: 'SECONDS')
             }
@@ -175,16 +176,10 @@ pipeline {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
           bat """
-            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl enable docker && sudo systemctl start docker && sudo usermod -aG docker ec2-user"
-
-            for /f "tokens=*" %%i in ('aws eks create-token --cluster-name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "status.token" --output text') do set JOIN_CMD=%%i
-            for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.endpoint" --output text') do set ENDPOINT=%%i
-            for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.certificateAuthority.data" --output text ^| base64 -d ^| sha256sum') do set HASH=%%~i
-
-            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "sudo kubeadm join --token %JOIN_CMD% %ENDPOINT% --discovery-token-ca-cert-hash sha256:%HASH%"
+            ssh -o StrictHostKeyChecking=no -i \"${KEY_PATH}\" ec2-user@${ec2Ip} \"sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl enable docker && sudo systemctl start docker && sudo usermod -aG docker ec2-user\"
           """
         }
-        echo 'EC2 joined to EKS'
+        echo 'EC2 configured with required tools'
       }
     }
 
@@ -193,8 +188,8 @@ pipeline {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1]
           bat """
-            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" -r ./* ec2-user@${ec2Ip}:/home/ec2-user/lambda-crud-automation
-            ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "cd /home/ec2-user/lambda-crud-automation && mv dockerfile Dockerfile && docker build -t fastapi-crud . && docker stop fastapi-crud || true && docker rm fastapi-crud || true && docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud"
+            scp -o StrictHostKeyChecking=no -i \"${KEY_PATH}\" -r ./* ec2-user@${ec2Ip}:/home/ec2-user/lambda-crud-automation
+            ssh -o StrictHostKeyChecking=no -i \"${KEY_PATH}\" ec2-user@${ec2Ip} \"cd /home/ec2-user/lambda-crud-automation && mv dockerfile Dockerfile && docker build -t fastapi-crud . && docker stop fastapi-crud || true && docker rm fastapi-crud || true && docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud\"
           """
         }
         echo 'Dockerized FastAPI deployed'
@@ -216,7 +211,7 @@ pipeline {
       steps {
         bat """
           :loop
-          for /f "tokens=*" %%i in ('kubectl get svc fastapi-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" --kubeconfig=%USERPROFILE%\\.kube\\config') do set LB=%%i
+          for /f \"tokens=*\" %%i in ('kubectl get svc fastapi-service -o jsonpath=\"{.status.loadBalancer.ingress[0].hostname}\" --kubeconfig=%USERPROFILE%\\.kube\\config') do set LB=%%i
           if not defined LB (
             echo Waiting...
             timeout /t 60
@@ -229,19 +224,17 @@ pipeline {
   }
 
   post {
-    always {
+    success {
       dir('terraform') {
         bat """
-          terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
+          terraform destroy -var \"role_name=ec2-dynamodb-role\" -var \"profile_name=ec2-instance-profile\" -var \"table_name=LocationsTerraform\" -var \"sg_name=allow_http\" -var \"timestamp=${TIMESTAMP}\" -auto-approve
         """
       }
       bat """
-        kubectl delete pod --all -n default --force --grace-period=0
-        eksctl delete cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --wait
+        kubectl delete pod --all -n default --force --grace-period=0 || exit 0
+        eksctl delete cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --wait || echo "EKS cluster not found, skipping deletion"
       """
       echo 'Cleanup done'
     }
   }
 }
-
-
