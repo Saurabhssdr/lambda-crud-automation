@@ -104,9 +104,10 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731115023
-        KEY_PATH = 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\my-key-pem.pem' // Updated to workspace
+        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731120523
+        KEY_PATH = 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\my-key-pem.pem'
         EC2_IP_FILE = 'env.properties'
+        MAX_RETRIES = 6 // 6 retries * 30s = 3 minutes max
     }
     stages {
         stage('Checkout Code') {
@@ -144,15 +145,24 @@ pipeline {
         }
         stage('Wait and Verify EC2') {
             steps {
-                echo "Waiting 3 minutes for EC2 and FastAPI setup..."
-                bat 'ping -n 181 127.0.0.1 > nul'
+                echo "Waiting up to 3 minutes for EC2 and FastAPI setup..."
                 script {
                     def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
                     bat """
                         if not exist %KEY_PATH% exit /b 1
+                        set RETRY_COUNT=0
                         :retry
-                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} exit || if errorlevel 1 (timeout /t 30 && goto :retry) else exit /b 0
-                    """ // Retry SSH up to 3 minutes
+                        ssh -i %KEY_PATH% ec2-user@%EC2_IP% exit
+                        if errorlevel 1 (
+                            set /a RETRY_COUNT+=1
+                            if !RETRY_COUNT! leq %MAX_RETRIES% (
+                                timeout /t 30
+                                goto :retry
+                            ) else (
+                                exit /b 1
+                            )
+                        )
+                    """
                 }
                 echo 'EC2 ready for EKS join'
             }
@@ -172,11 +182,11 @@ pipeline {
                     def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
                     bat """
                         if not exist %KEY_PATH% exit /b 1
-                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} "sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl start docker && sudo systemctl enable docker && sudo usermod -aG docker ec2-user && newgrp docker" || exit /b 1
+                        ssh -i %KEY_PATH% ec2-user@%EC2_IP% "sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl start docker && sudo systemctl enable docker && sudo usermod -aG docker ec2-user && newgrp docker" || exit /b 1
                         for /f "tokens=*" %%i in ('aws eks create-token --cluster-name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "status.token" --output text') do set JOIN_CMD=%%i
                         for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.endpoint" --output text') do set ENDPOINT=%%i
                         for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.certificateAuthority.data" --output text ^| base64 -d ^| sha256sum ^| awk "{print \$1}"') do set HASH=%%i
-                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} "sudo kubeadm join --token %JOIN_CMD% %ENDPOINT% --discovery-token-ca-cert-hash sha256:%HASH%" || exit /b 1
+                        ssh -i %KEY_PATH% ec2-user@%EC2_IP% "sudo kubeadm join --token %JOIN_CMD% %ENDPOINT% --discovery-token-ca-cert-hash sha256:%HASH%" || exit /b 1
                     """
                     echo 'EC2 joined to EKS'
                 }
@@ -187,8 +197,8 @@ pipeline {
                 script {
                     def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
                     bat """
-                        scp -i %KEY_PATH% -r ./* ec2-user@${ec2Ip}:/home/ec2-user/lambda-crud-automation || exit /b 1
-                        ssh -i %KEY_PATH% ec2-user@${ec2Ip} "cd /home/ec2-user/lambda-crud-automation && [ -f dockerfile ] && mv dockerfile Dockerfile && docker build -t fastapi-crud . && docker stop fastapi-crud || true && docker rm fastapi-crud || true && docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud" || exit /b 1
+                        scp -i %KEY_PATH% -r ./* ec2-user@%EC2_IP%:/home/ec2-user/lambda-crud-automation || exit /b 1
+                        ssh -i %KEY_PATH% ec2-user@%EC2_IP% "cd /home/ec2-user/lambda-crud-automation && [ -f dockerfile ] && mv dockerfile Dockerfile && docker build -t fastapi-crud . && docker stop fastapi-crud || true && docker rm fastapi-crud || true && docker run -d -p 8000:80 --restart unless-stopped --name fastapi-crud fastapi-crud" || exit /b 1
                     """
                     echo 'Image built and running on EC2'
                 }
