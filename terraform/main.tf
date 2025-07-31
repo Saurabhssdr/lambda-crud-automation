@@ -7,6 +7,9 @@ variable "profile_name" {
 variable "table_name" {
   default = "LocationsTerraform"
 }
+variable "sg_name" {
+  default = "allow_http"
+}
 
 provider "aws" {
   region = "us-east-1"
@@ -53,7 +56,7 @@ resource "aws_dynamodb_table" "locations_table" {
 }
 
 resource "aws_security_group" "allow_http" {
-  name        = "allow_http"
+  name        = "${var.sg_name}-${var.timestamp}" // Dynamic name with timestamp
   description = "Allow HTTP inbound traffic"
   vpc_id      = data.aws_vpc.default.id
   ingress {
