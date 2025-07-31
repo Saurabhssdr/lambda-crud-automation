@@ -27,7 +27,14 @@ pipeline {
           """
           script {
             def rawOutput = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
-            def ip = rawOutput.readLines().findAll { it ==~ /\d+\\.\\d+\\.\\d+\\.\\d+/ }[-1]
+            echo "🔍 Terraform raw output:\n${rawOutput}"
+
+            def ipLines = rawOutput.readLines().findAll { it ==~ /\d+\\.\\d+\\.\\d+\\.\\d+/ }
+            if (ipLines.isEmpty()) {
+              error "❌ No valid IP found in terraform output:\n${rawOutput}"
+            }
+
+            def ip = ipLines[-1]
             writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
             echo "✅ EC2 Public IP saved to env.properties: ${ip}"
           }
@@ -41,14 +48,17 @@ pipeline {
           if (!fileExists(EC2_IP_FILE)) {
             error "❌ env.properties not found!"
           }
+
           def content = readFile(EC2_IP_FILE).trim()
           if (!content.contains('=')) {
             error "❌ env.properties malformed!"
           }
+
           def ip = content.split("=")[1].trim()
           if (!ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
             error "❌ Invalid IP in env.properties: ${ip}"
           }
+
           echo "✅ Valid EC2 IP: ${ip}"
         }
       }
@@ -101,7 +111,7 @@ pipeline {
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl apply -f deployment.yaml"
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl apply -f service.yaml"
           """
-          echo "✅ FastAPI deployed"
+          echo "✅ FastAPI deployed to EKS"
         }
       }
     }
@@ -128,3 +138,4 @@ pipeline {
     }
   }
 }
+
