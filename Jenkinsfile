@@ -104,7 +104,7 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // Sanitized timestamp (e.g., 20250731110523)
+        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // Sanitized timestamp (e.g., 20250731112523)
     }
     stages {
         stage('Checkout Code') {
@@ -133,7 +133,7 @@ pipeline {
             steps {
                 dir('terraform') {
                     bat """
-                        terraform apply -var "role_name=ec2-dynamodb-role-${TIMESTAMP}" -var "profile_name=ec2-instance-profile-${TIMESTAMP}" -var "table_name=LocationsTerraform-${TIMESTAMP}" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve || exit /b 1
+                        terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve || exit /b 1
                         for /f "tokens=*" %%i in ('terraform output -raw ec2_public_ip') do set EC2_IP=%%i && echo EC2_IP=%%i > ../env.properties || exit /b 1
                     """
                     echo 'EC2 instance created'
@@ -208,9 +208,9 @@ pipeline {
     post {
         always {
             dir('terraform') {
-                bat 'terraform destroy -var "role_name=ec2-dynamodb-role-${TIMESTAMP}" -var "profile_name=ec2-instance-profile-${TIMESTAMP}" -var "table_name=LocationsTerraform-${TIMESTAMP}" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve || true'
+                bat 'terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve || exit /b 0'
             }
-            bat 'eksctl delete cluster --name fastapi-eks-${TIMESTAMP} --region %AWS_REGION% --wait || true'
+            bat 'eksctl delete cluster --name fastapi-eks-${TIMESTAMP} --region %AWS_REGION% --wait || exit /b 0'
             echo 'Cleanup completed'
         }
     }
