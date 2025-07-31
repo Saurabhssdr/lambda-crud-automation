@@ -18,13 +18,13 @@ pipeline {
       }
     }
 
-    stage('Clean Old env.properties') {
+    stage('Clean env.properties') {
       steps {
-        echo "🧹 Cleaning up old env.properties if exists..."
+        echo "🧹 Cleaning up old env.properties (if exists)..."
         script {
           if (fileExists(EC2_IP_FILE)) {
-            echo "🗑️ Deleting stale env.properties file..."
             new File(EC2_IP_FILE).delete()
+            echo "🗑️ Deleted old env.properties"
           } else {
             echo "✅ No old env.properties found"
           }
@@ -32,7 +32,7 @@ pipeline {
       }
     }
 
-    stage('Terraform Apply (Create EC2)') {
+    stage('Terraform Apply & Save EC2 IP') {
       steps {
         dir('terraform') {
           bat 'terraform init'
@@ -41,29 +41,12 @@ pipeline {
           """
           script {
             def ip = bat(returnStdout: true, script: 'terraform output -raw ec2_public_ip').trim()
-            if (!ip || ip ==~ /.*null.*/ || ip.length() < 7) {
-              error "❌ Invalid or empty EC2 IP from Terraform: '${ip}'"
+            if (!ip || ip.contains('null') || ip.length() < 7) {
+              error "❌ Invalid EC2 IP from Terraform: '${ip}'"
             }
             writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
-            echo "✅ EC2 Public IP stored: ${ip}"
+            echo "✅ EC2 IP stored in env.properties: ${ip}"
           }
-        }
-      }
-    }
-
-    stage('Validate env.properties') {
-      steps {
-        script {
-          if (!fileExists(EC2_IP_FILE)) {
-            error "❌ env.properties file not found! Make sure Terraform ran successfully."
-          }
-
-          def content = readFile(EC2_IP_FILE).trim()
-          if (!content || !content.contains('=') || content.split('=').length < 2 || content.split('=')[1].trim() == "") {
-            error "❌ env.properties is empty or malformed: '${content}'"
-          }
-
-          echo "✅ env.properties validated: ${content}"
         }
       }
     }
@@ -90,11 +73,11 @@ pipeline {
         bat """
           eksctl create cluster --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION} --nodes 2 --managed --node-type t2.micro --with-oidc --ssh-access --ssh-public-key my-key-pem
         """
-        echo "✅ EKS cluster created: fastapi-eks-v${TIMESTAMP}"
+        echo "✅ EKS Cluster created: fastapi-eks-v${TIMESTAMP}"
       }
     }
 
-    stage('Configure EC2 to Use EKS') {
+    stage('Configure EC2 for EKS') {
       steps {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1].trim()
@@ -146,7 +129,7 @@ pipeline {
       """
     }
     failure {
-      echo '❌ Pipeline failed. Please check logs and do manual cleanup if needed.'
+      echo '❌ Pipeline failed. Please check logs and clean manually if needed.'
     }
   }
 }
