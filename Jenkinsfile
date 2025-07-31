@@ -18,6 +18,20 @@ pipeline {
       }
     }
 
+    stage('Clean Old env.properties') {
+      steps {
+        echo "🧹 Cleaning up old env.properties if exists..."
+        script {
+          if (fileExists(EC2_IP_FILE)) {
+            echo "🗑️ Deleting stale env.properties file..."
+            new File(EC2_IP_FILE).delete()
+          } else {
+            echo "✅ No old env.properties found"
+          }
+        }
+      }
+    }
+
     stage('Terraform Apply (Create EC2)') {
       steps {
         dir('terraform') {
@@ -27,12 +41,11 @@ pipeline {
           """
           script {
             def ip = bat(returnStdout: true, script: 'terraform output -raw ec2_public_ip').trim()
-            echo "🌐 EC2 Public IP from Terraform: '${ip}'"
-            if (!ip || ip == '' || ip == 'null') {
-              error "❌ Terraform output for EC2 public IP is empty or null! Check Terraform or AWS."
+            if (!ip || ip ==~ /.*null.*/ || ip.length() < 7) {
+              error "❌ Invalid or empty EC2 IP from Terraform: '${ip}'"
             }
             writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
-            echo "✅ Wrote EC2 IP to env.properties: ${ip}"
+            echo "✅ EC2 Public IP stored: ${ip}"
           }
         }
       }
@@ -42,27 +55,33 @@ pipeline {
       steps {
         script {
           if (!fileExists(EC2_IP_FILE)) {
-            error "❌ env.properties file not found!"
+            error "❌ env.properties file not found! Make sure Terraform ran successfully."
           }
+
           def content = readFile(EC2_IP_FILE).trim()
-          echo "📄 env.properties content: '${content}'"
-          if (!content || !content.contains('=')) {
+          if (!content || !content.contains('=') || content.split('=').length < 2 || content.split('=')[1].trim() == "") {
             error "❌ env.properties is empty or malformed: '${content}'"
           }
-          echo "✅ env.properties is valid"
+
+          echo "✅ env.properties validated: ${content}"
         }
       }
     }
 
     stage('Wait for SSH Ready') {
       steps {
-        echo "⏳ Waiting 3 minutes for EC2 to be SSH ready..."
-        bat 'ping -n 181 127.0.0.1 > nul'
+        echo "⏳ Waiting for EC2 SSH to be ready..."
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1].trim()
-          echo "🔍 Please manually verify: ssh -i ${KEY_PATH} ec2-user@${ec2Ip}"
+          timeout(time: 5, unit: 'MINUTES') {
+            retry(10) {
+              sleep(time: 30, unit: 'SECONDS')
+              bat """
+                ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "echo SSH OK"
+              """
+            }
+          }
         }
-        input '✅ Confirm EC2 SSH is working. Continue?'
       }
     }
 
@@ -71,16 +90,17 @@ pipeline {
         bat """
           eksctl create cluster --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION} --nodes 2 --managed --node-type t2.micro --with-oidc --ssh-access --ssh-public-key my-key-pem
         """
+        echo "✅ EKS cluster created: fastapi-eks-v${TIMESTAMP}"
       }
     }
 
-    stage('Configure EC2 for EKS') {
+    stage('Configure EC2 to Use EKS') {
       steps {
         script {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1].trim()
           bat """
-            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" deployment.yaml ec2-user@${ec2Ip}:/home/ec2-user/
-            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" service.yaml ec2-user@${ec2Ip}:/home/ec2-user/
+            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\deployment.yaml ec2-user@${ec2Ip}:/home/ec2-user/
+            scp -o StrictHostKeyChecking=no -i "${KEY_PATH}" C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\service.yaml ec2-user@${ec2Ip}:/home/ec2-user/
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "aws eks update-kubeconfig --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION}"
           """
         }
@@ -106,7 +126,7 @@ pipeline {
           def lbUrl = bat(returnStdout: true, script: """
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl get svc fastapi-service --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
           """).trim()
-          echo "🌐 FastAPI Load Balancer URL: http://${lbUrl}"
+          echo "🌐 Load Balancer URL: http://${lbUrl}"
         }
       }
     }
@@ -114,12 +134,16 @@ pipeline {
 
   post {
     success {
-      echo '🎉 Pipeline completed successfully. Cleaning up...'
+      echo '✅ Cleaning up resources...'
       dir('terraform') {
         bat """
           terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
         """
       }
+      bat """
+        kubectl delete pod --all -n default --force --grace-period=0
+        eksctl delete cluster --name fastapi-eks-v${TIMESTAMP} --region ${AWS_REGION} --wait
+      """
     }
     failure {
       echo '❌ Pipeline failed. Please check logs and do manual cleanup if needed.'
