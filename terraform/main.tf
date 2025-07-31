@@ -1,9 +1,19 @@
+variable "role_name" {
+  default = "ec2-dynamodb-role"
+}
+variable "profile_name" {
+  default = "ec2-instance-profile"
+}
+variable "table_name" {
+  default = "LocationsTerraform"
+}
+
 provider "aws" {
   region = "us-east-1"
 }
 
-resource "aws_iam_role" "ec2_dynamodb_role19" {
-  name = "ec2-dynamodb-role19"
+resource "aws_iam_role" "ec2_dynamodb_role" {
+  name = var.role_name
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -15,17 +25,17 @@ resource "aws_iam_role" "ec2_dynamodb_role19" {
 }
 
 resource "aws_iam_role_policy_attachment" "dynamodb_access" {
-  role       = aws_iam_role.ec2_dynamodb_role19.name
+  role       = aws_iam_role.ec2_dynamodb_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
 }
 
-resource "aws_iam_instance_profile" "ec2_profile2" {
-  name = "ec2-instance-profile2"
-  role = aws_iam_role.ec2_dynamodb_role19.name
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = var.profile_name
+  role = aws_iam_role.ec2_dynamodb_role.name
 }
 
 resource "aws_dynamodb_table" "locations_table" {
-  name           = "Locations_resource"
+  name           = var.table_name
   billing_mode   = "PAY_PER_REQUEST"
   hash_key       = "country"
   range_key      = "city_id"
@@ -46,14 +56,12 @@ resource "aws_security_group" "allow_http" {
   name        = "allow_http"
   description = "Allow HTTP inbound traffic"
   vpc_id      = data.aws_vpc.default.id
-
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -69,11 +77,10 @@ data "aws_vpc" "default" {
 resource "aws_instance" "fastapi_ec2" {
   ami                    = "ami-051f8a213df8bc089"
   instance_type          = "t2.micro"
-  key_name               = "my-key-pem" // Using your existing key pair
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile2.name
+  key_name               = "my-key-pem"
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
   user_data              = file("${path.module}/setup.sh")
   vpc_security_group_ids = [aws_security_group.allow_http.id]
-
   tags = {
     Name = "fastapi-instance"
   }
