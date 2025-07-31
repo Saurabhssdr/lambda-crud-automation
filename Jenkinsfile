@@ -26,12 +26,14 @@ pipeline {
             terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
           """
           script {
-            def ipOutput = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
-            if (!ipOutput || !ipOutput.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
-              error "❌ Failed to extract a valid IP address. Got: ${ipOutput}"
+            def output = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
+            def lines = output.readLines()
+            def ip = lines[-1].trim()
+            if (!ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
+              error "❌ Failed to extract a valid IP address. Got: ${ip}"
             }
-            writeFile file: EC2_IP_FILE, text: "EC2_IP=${ipOutput}"
-            echo "✅ EC2 Public IP saved: ${ipOutput}"
+            writeFile file: EC2_IP_FILE, text: "EC2_IP=${ip}"
+            echo "✅ EC2 Public IP saved to env.properties: ${ip}"
           }
         }
       }
