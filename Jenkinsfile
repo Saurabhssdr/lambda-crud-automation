@@ -104,7 +104,7 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731111523
+        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731110823
     }
     stages {
         stage('Checkout Code') {
@@ -148,8 +148,10 @@ pipeline {
         }
         stage('Create EKS Cluster') {
             steps {
-                bat 'eksctl create cluster --name fastapi-eks-v${TIMESTAMP} --region %AWS_REGION% --nodegroup-name v-standard-workers-${TIMESTAMP} --node-type t2.micro --nodes 1 --managed=false || exit /b 1'
-                bat 'aws eks --region %AWS_REGION% update-kubeconfig --name fastapi-eks-v${TIMESTAMP} || exit /b 1'
+                bat """
+                    eksctl create cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --nodegroup-name v-standard-workers-%TIMESTAMP% --node-type t2.micro --nodes 1 --managed=false || exit /b 1
+                    aws eks --region %AWS_REGION% update-kubeconfig --name fastapi-eks-v%TIMESTAMP% || exit /b 1
+                """
                 echo 'EKS cluster created'
             }
         }
@@ -159,9 +161,9 @@ pipeline {
                     def ec2Ip = readFile('env.properties').trim().split('=')[1]
                     bat """
                         ssh -i C:/Users/SaurabhDaundkar/my-key-pem.pem ec2-user@${ec2Ip} "sudo yum update -y && sudo yum install -y docker git kubeadm kubelet kubectl && sudo systemctl start docker && sudo systemctl enable docker && sudo usermod -aG docker ec2-user && newgrp docker" || exit /b 1
-                        for /f "tokens=*" %%i in ('aws eks create-token --cluster-name fastapi-eks-v${TIMESTAMP} --region %AWS_REGION% --query "status.token" --output text') do set JOIN_CMD=%%i
-                        for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v${TIMESTAMP} --region %AWS_REGION% --query "cluster.endpoint" --output text') do set ENDPOINT=%%i
-                        for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v${TIMESTAMP} --region %AWS_REGION% --query "cluster.certificateAuthority.data" --output text ^| base64 -d ^| sha256sum ^| awk "{print \$1}"') do set HASH=%%i
+                        for /f "tokens=*" %%i in ('aws eks create-token --cluster-name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "status.token" --output text') do set JOIN_CMD=%%i
+                        for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.endpoint" --output text') do set ENDPOINT=%%i
+                        for /f "tokens=*" %%i in ('aws eks describe-cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --query "cluster.certificateAuthority.data" --output text ^| base64 -d ^| sha256sum ^| awk "{print \$1}"') do set HASH=%%i
                         ssh -i C:/Users/SaurabhDaundkar/my-key-pem.pem ec2-user@${ec2Ip} "sudo kubeadm join --token %JOIN_CMD% %ENDPOINT% --discovery-token-ca-cert-hash sha256:%HASH%" || exit /b 1
                     """
                     echo 'EC2 joined to EKS'
@@ -183,7 +185,7 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 bat """
-                    aws eks --region %AWS_REGION% update-kubeconfig --name fastapi-eks-v${TIMESTAMP} || exit /b 1
+                    aws eks --region %AWS_REGION% update-kubeconfig --name fastapi-eks-v%TIMESTAMP% || exit /b 1
                     kubectl apply -f deployment.yaml || exit /b 1
                     kubectl apply -f service.yaml || exit /b 1
                 """
@@ -210,7 +212,7 @@ pipeline {
             dir('terraform') {
                 bat 'terraform destroy -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve || exit /b 0'
             }
-            bat 'eksctl delete cluster --name fastapi-eks-v${TIMESTAMP} --region %AWS_REGION% --wait || exit /b 0'
+            bat 'eksctl delete cluster --name fastapi-eks-v%TIMESTAMP% --region %AWS_REGION% --wait || exit /b 0'
             echo 'Cleanup completed'
         }
     }
