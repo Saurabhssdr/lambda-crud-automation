@@ -104,7 +104,7 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731115423
+        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731111523
     }
     stages {
         stage('Checkout Code') {
@@ -148,7 +148,7 @@ pipeline {
         }
         stage('Create EKS Cluster') {
             steps {
-                bat 'eksctl create cluster --name fastapi-eks-v${TIMESTAMP} --region %AWS_REGION% --nodegroup-name standard-workers-v${TIMESTAMP} --node-type t2.micro --nodes 1 --managed=false || exit /b 1'
+                bat 'eksctl create cluster --name fastapi-eks-v${TIMESTAMP} --region %AWS_REGION% --nodegroup-name v-standard-workers-${TIMESTAMP} --node-type t2.micro --nodes 1 --managed=false || exit /b 1'
                 bat 'aws eks --region %AWS_REGION% update-kubeconfig --name fastapi-eks-v${TIMESTAMP} || exit /b 1'
                 echo 'EKS cluster created'
             }
