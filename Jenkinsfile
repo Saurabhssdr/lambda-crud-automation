@@ -25,16 +25,21 @@ pipeline {
           bat """
             terraform apply -var "role_name=ec2-dynamodb-role" -var "profile_name=ec2-instance-profile" -var "table_name=LocationsTerraform" -var "sg_name=allow_http" -var "timestamp=${TIMESTAMP}" -auto-approve
           """
+
           script {
             def rawOutput = bat(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
-            echo "🔍 Terraform raw output:\n${rawOutput}"
+            echo "🔍 Terraform raw output (inside terraform dir):\n${rawOutput}"
+
             def lines = rawOutput.readLines()
             def ipLine = lines[-1].trim()
+
             if (!ipLine.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
               error "❌ No valid IP found in terraform output. Got:\n${ipLine}"
             }
+
+            // Write file to root workspace, not inside terraform dir
             writeFile file: "../${EC2_IP_FILE}", text: "EC2_IP=${ipLine}"
-            echo "✅ EC2 Public IP saved to env.properties: ${ipLine}"
+            echo "✅ EC2 Public IP saved to ${EC2_IP_FILE}: ${ipLine}"
           }
         }
       }
@@ -44,29 +49,23 @@ pipeline {
       steps {
         script {
           if (!fileExists(EC2_IP_FILE)) {
-            error "❌ env.properties not found!"
+            error "❌ env.properties not found in root workspace!"
           }
+
           def content = readFile(EC2_IP_FILE).trim()
           echo "🔍 Read env.properties content:\n${content}"
+
           if (!content.contains('=')) {
             error "❌ env.properties malformed!"
           }
+
           def ip = content.split("=")[1].trim()
           if (!ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
             error "❌ Invalid IP in env.properties: ${ip}"
           }
+
           echo "✅ Valid EC2 IP: ${ip}"
         }
-      }
-    }
-
-    // NEW stage to fix PEM key permissions on Windows Jenkins
-    stage('Fix PEM Permissions') {
-      steps {
-        bat """
-          powershell -Command "icacls \\"${KEY_PATH}\\" /inheritance:r /grant:r ${env.USERNAME}:(R)"
-        """
-        echo "✅ Fixed PEM file permissions"
       }
     }
 
@@ -117,7 +116,7 @@ pipeline {
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl apply -f deployment.yaml"
             ssh -o StrictHostKeyChecking=no -i "${KEY_PATH}" ec2-user@${ec2Ip} "kubectl apply -f service.yaml"
           """
-          echo "✅ FastAPI deployed"
+          echo "✅ FastAPI deployed to EKS"
         }
       }
     }
