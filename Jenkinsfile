@@ -104,7 +104,7 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731121723
+        TIMESTAMP = "${new Date().format('yyyyMMddHHmmss')}" // e.g., 20250731122723
         KEY_PATH = 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\lambda-crud-pipeline\\my-key-pem.pem' // Hardcoded
         EC2_IP_FILE = 'env.properties'
     }
@@ -144,12 +144,13 @@ pipeline {
         }
         stage('Wait and Verify EC2') {
             steps {
-                echo "Waiting up to 3 minutes for EC2 and FastAPI setup..."
+                echo "Waiting 3 minutes for EC2 and FastAPI setup..."
+                bat 'ping -n 181 127.0.0.1 > nul'
                 script {
                     def ec2Ip = readFile("${EC2_IP_FILE}").trim().split('=')[1]
                     bat """
                         if not exist ${KEY_PATH} exit /b 1
-                        powershell -Command "& { \$retryCount = 0; \$maxRetries = 6; while (\$retryCount -lt \$maxRetries) { try { \$result = & ssh -i ${KEY_PATH} ec2-user@${ec2Ip} exit 2>&1; if (\$LASTEXITCODE -eq 0) { break; } } catch { Write-Host \$_.Exception.Message }; Start-Sleep -Seconds 30; \$retryCount++ }; if (\$retryCount -ge \$maxRetries) { exit 1 } }"
+                        ssh -i ${KEY_PATH} ec2-user@${ec2Ip} exit || exit /b 1
                     """
                 }
                 echo 'EC2 ready for EKS join'
