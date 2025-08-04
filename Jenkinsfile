@@ -61,6 +61,12 @@ pipeline {
           def ec2Ip = readFile(EC2_IP_FILE).trim().split('=')[1].trim()
           echo "⏳ Waiting 120 seconds for EC2 to boot..."
           sleep(time: 120, unit: 'SECONDS') // Increased wait time
+          echo "🔍 Setting strict permissions on SSH key..."
+          bat """
+            icacls "${KEY_PATH}" /inheritance:r
+            icacls "${KEY_PATH}" /grant:r "azuread\\saurabhdaundkar:F" // Using your AAD username
+            icacls "${KEY_PATH}" /grant "SYSTEM:R"
+          """
           echo "🔍 Checking SSH to ${ec2Ip}..."
           timeout(time: 5, unit: 'MINUTES') {
             retry(10) {
@@ -74,7 +80,7 @@ pipeline {
               }
             }
           }
-          error "❌ SSH failed after multiple attempts. Check EC2 status and key permissions."
+          error "❌ SSH failed after multiple attempts. Check EC2 status, key permissions, and security group."
         }
       }
     }
